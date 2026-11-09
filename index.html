@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Card Scout | Topps football watchlist</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f4ee;color:#191b19;font:16px system-ui,sans-serif}main,header>div{max-width:1050px;margin:auto;padding:28px}header{background:#191b19;color:white;border-bottom:6px solid #bdfa45}h1{font-size:clamp(3rem,9vw,6rem);letter-spacing:-.075em;margin:.2em 0;line-height:1}h2,h3{margin:.3em 0}.tag{color:#bdfa45;font-weight:800;letter-spacing:.15em;font-size:.75rem}p{line-height:1.5}.panel,article{background:white;border:1px solid #d6d8ce;border-radius:16px;padding:20px;margin:16px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px}.wide{grid-column:span 2}@media(max-width:500px){.wide{grid-column:auto}}label{display:grid;gap:5px;font-weight:650;font-size:.9rem}input,select,button,a.link{font:inherit;border:1px solid #a5a99c;border-radius:8px;padding:9px 12px;color:inherit;background:white;min-width:0}button,a.link{cursor:pointer;font-weight:700;text-decoration:none;display:inline-block}button.primary{background:#bdfa45;border-color:#758d38}.row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0}.quote{border-top:1px solid #ddd;padding:12px 0}.muted{color:#53584f;font-size:.9rem}summary{cursor:pointer;font-weight:700}form button{align-self:end}a:hover,button:hover{text-decoration:underline}
+</style>
+<header><div><div class="tag">TOPPS FOOTBALL / NORTH AMERICA</div><h1>Card Scout</h1><p>Find Juventus singles, sealed packs and boxes. Compare seller quotes for your delivery destination.</p></div></header>
+<main>
+<section class="panel"><h2>Delivery destination</h2><div class="grid"><label>Market<select id="market"><option value="US">United States · USD</option><option value="CA">Canada · CAD</option></select></label><label>ZIP or postal code<input id="postal" placeholder="Enter delivery code" maxlength="10"></label></div><p class="muted">Search links open seller sites. Check delivery there and record the quote here. Taxes and import charges are excluded. Quotes are saved in this browser.</p></section>
+<section class="panel"><h2>Add to watchlist</h2><form id="add" class="grid"><label>Product type<select name="type"><option>Single</option><option>Pack</option><option>Box</option></select></label><label class="wide">Exact product or card<input name="name" required maxlength="180" placeholder="Season, set, card #, variant or box format"></label><button class="primary">Add product</button></form></section>
+<div class="row"><h2>Watchlist</h2><select id="filter" aria-label="Filter by product type"><option value="">All products</option><option>Single</option><option>Pack</option><option>Box</option></select></div>
+<div id="results"></div></main>
+<script>
+const key = 'card-scout-v1';
+const get = id => document.getElementById(id);
+const market = get('market'), postal = get('postal'), filter = get('filter');
+const defaults = {
+  market:'US', codes:{US:'', CA:''}, items:[
+    {id:'single',type:'Single',name:'Topps Chrome UEFA Juventus Kenan Yildiz',quotes:[],starter:true},
+    {id:'pack',type:'Pack',name:'Topps Chrome UEFA soccer sealed hobby pack',quotes:[],starter:true},
+    {id:'box',type:'Box',name:'Topps Chrome UEFA soccer sealed hobby box',quotes:[],starter:true}
+  ]
+};
+let state = defaults;
+try { state = JSON.parse(localStorage.getItem(key)) || defaults; } catch {}
+function save(){localStorage.setItem(key, JSON.stringify(state));}
+const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const code = () => postal.value.toUpperCase().replace(/\s/g,'');
+const validCode = () => (market.value === 'US' ? /^\d{5}(-\d{4})?$/ : /^[A-Z]\d[A-Z]\d[A-Z]\d$/).test(code());
+const currency = () => market.value === 'US' ? 'USD' : 'CAD';
+const money = cents => new Intl.NumberFormat('en',{style:'currency',currency:currency(),currencyDisplay:'code'}).format(cents/100);
+const total = quote => quote.price + quote.shipping;
+function sellerLinks(item){
+  const query = encodeURIComponent(item.name);
+  const ebay = 'https://www.ebay.' + (market.value === 'CA' ? 'ca' : 'com') + '/sch/i.html?_nkw=' + query;
+  return [
+    ['eBay Buy It Now',ebay+'&LH_BIN=1'],
+    ['eBay auctions',ebay+'&LH_Auction=1'],
+    ['Topps search','https://www.google.com/search?q=site%3Atopps.com+'+query],
+    [item.type === 'Single' ? 'COMC search' : 'Card shop search','https://www.google.com/search?q='+query+(item.type === 'Single' ? '+site%3Acomc.com' : market.value === 'CA' ? '+Canada+card+shop' : '+USA+card+shop')]
+  ].map(([label,url])=>'<a class="link" target="_blank" rel="noopener" href="'+escape(url)+'">'+label+'</a>').join('');
+}
+function render(){
+  const visible = state.items.filter(item=>!filter.value || item.type === filter.value);
+  get('results').innerHTML = visible.map(item=>{
+    const quotes = item.quotes.filter(q=>q.market===market.value && q.postal===code());
+    const fixed = quotes.filter(q=>q.mode==='Fixed price' && q.stock==='In stock' && q.shipping!==null).sort((a,b)=>total(a)-total(b));
+    const other = quotes.filter(q=>!fixed.includes(q));
+    const row = (q,best=false)=>'<div class="quote"><strong>'+escape(q.seller)+' · '+(q.shipping===null ? money(q.price)+' + unknown shipping' : money(total(q)))+'</strong> '+(best?'· Lowest recorded total':'')+'<div class="muted">'+escape(q.mode)+' · '+escape(q.stock)+' · Checked '+escape(new Date(q.checked).toLocaleString())+'</div><div class="row"><a target="_blank" rel="noopener" href="'+escape(q.url)+'">Open listing</a><button type="button" data-delete="'+escape(q.url)+'">Remove quote</button></div></div>';
+    return '<article data-id="'+escape(item.id)+'"><div class="muted">'+escape(item.type)+'</div><h3>'+escape(item.name)+'</h3>'+
+      (item.starter?'<p class="muted">Starter search. Add an exact product to compare matching listings.</p>':'')+
+      '<div class="row">'+sellerLinks(item)+'</div>'+
+      (item.starter?'': '<p class="muted">'+(fixed.length?'Fixed-price listings with known delivery':'No comparable fixed-price quotes for this destination yet.')+'</p>'+
+      fixed.map((q,i)=>row(q,i===0)).join('')+(other.length?'<h4>Auctions and other quotes</h4>'+other.map(q=>row(q)).join(''):'')+
+      '<details><summary>Record or update a seller quote</summary><form class="grid quote-form"><label>Seller<input name="seller" required maxlength="100"></label><label>Listing URL<input name="url" type="url" required placeholder="https://…"></label><label>Item price ('+currency()+')<input name="price" type="number" min="0" max="1000000" step=".01" required></label><label>Delivery ('+currency()+')<input name="shipping" type="number" min="0" max="1000000" step=".01" placeholder="Blank if unknown"></label><label>Listing type<select name="mode"><option>Fixed price</option><option>Auction</option></select></label><label>Availability<select name="stock"><option>In stock</option><option>Unknown</option><option>Out of stock</option></select></label><button class="primary">Save quote</button><output aria-live="polite"></output></form></details>')+
+      '<div class="row"><button type="button" data-remove>Remove product</button></div></article>';
+  }).join('') || '<p>No products in this view.</p>';
+}
+market.value = state.market;
+postal.value = state.codes[market.value] || '';
+market.addEventListener('change',()=>{state.market=market.value;postal.value=state.codes[market.value]||'';save();render();});
+postal.addEventListener('change',()=>{state.codes[market.value]=code();save();render();});
+filter.addEventListener('change',render);
+get('add').addEventListener('submit',event=>{
+  event.preventDefault();
+  const data = new FormData(event.target);
+  const name = data.get('name').trim();
+  if(!name) return;
+  state.items.unshift({id:String(Date.now())+Math.random(),name,type:data.get('type'),quotes:[]});
+  event.target.reset();filter.value='';save();render();
+});
+get('results').addEventListener('submit',event=>{
+  event.preventDefault();
+  const form=event.target, data=new FormData(form), output=form.querySelector('output');
+  if(!validCode()){output.textContent='Enter a valid ZIP or postal code first.';return;}
+  const url=new URL(data.get('url'));
+  if(!['https:','http:'].includes(url.protocol)){output.textContent='Use a web listing link.';return;}
+  const item=state.items.find(i=>i.id===form.closest('article').dataset.id);
+  const quote={url:url.href,market:market.value,postal:code(),seller:data.get('seller').trim(),price:Math.round(Number(data.get('price'))*100),shipping:data.get('shipping')===''?null:Math.round(Number(data.get('shipping'))*100),stock:data.get('stock'),mode:data.get('mode'),checked:new Date().toISOString()};
+  item.quotes=item.quotes.filter(q=>q.url!==quote.url || q.market!==quote.market || q.postal!==quote.postal);
+  item.quotes.push(quote);save();render();
+});
+get('results').addEventListener('click',event=>{
+  const button=event.target.closest('button');
+  if(!button || !('remove' in button.dataset || 'delete' in button.dataset))return;
+  const item=state.items.find(i=>i.id===button.closest('article').dataset.id);
+  if('remove' in button.dataset){
+    if(!confirm('Remove this product and its saved quotes?'))return;
+    state.items=state.items.filter(i=>i!==item);
+  }else{
+    item.quotes=item.quotes.filter(q=>q.url!==button.dataset.delete || q.market!==market.value || q.postal!==code());
+  }
+  save();render();
+});
+render();
+</script>
+</html>
