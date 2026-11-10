@@ -1,0 +1,9 @@
+{
+  "name": "card-scout-ebay",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-01-01",
+  "observability": { "enabled": false },
+  "ratelimits": [
+    { "name": "SEARCH_LIMIT", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } }
+  ]
+}
