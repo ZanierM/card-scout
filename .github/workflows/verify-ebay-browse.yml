@@ -1,0 +1,50 @@
+name: Verify eBay Browse access
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      EBAY_APP_ID: ${{ secrets.EBAY_APP_ID }}
+      EBAY_CERT_ID: ${{ secrets.EBAY_CERT_ID }}
+    steps:
+      - name: Test production OAuth and Browse search
+        run: |
+          node --input-type=module <<'JS'
+          const { EBAY_APP_ID: id, EBAY_CERT_ID: secret } = process.env;
+          if (!id || !secret) {
+            console.error('Add the EBAY_APP_ID and EBAY_CERT_ID repository secrets first.');
+            process.exit(1);
+          }
+          try {
+            const oauth = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
+              method: 'POST',
+              headers: {
+                Authorization: 'Basic ' + Buffer.from(id + ':' + secret).toString('base64'),
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              body: new URLSearchParams({ grant_type: 'client_credentials', scope: 'https://api.ebay.com/oauth/api_scope' }),
+              redirect: 'error',
+              signal: AbortSignal.timeout(15000),
+            });
+            console.log('Production OAuth HTTP ' + oauth.status);
+            if (!oauth.ok) process.exit(1);
+            const { access_token: token } = await oauth.json();
+            if (!token) throw new Error();
+            for (const market of ['EBAY_US', 'EBAY_CA']) {
+              const search = await fetch('https://api.ebay.com/buy/browse/v1/item_summary/search?q=Topps+Juventus&limit=1', {
+                headers: { Authorization: 'Bearer ' + token, 'X-EBAY-C-MARKETPLACE-ID': market },
+                redirect: 'error',
+                signal: AbortSignal.timeout(15000),
+              });
+              console.log(market + ' Browse search HTTP ' + search.status);
+              await search.body?.cancel();
+              if (!search.ok) process.exitCode = 1;
+            }
+          } catch {
+            console.error('eBay request could not be completed.');
+            process.exitCode = 1;
+          }
+          JS
